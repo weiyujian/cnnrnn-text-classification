@@ -1,5 +1,4 @@
 #! /usr/bin/env python
-
 import tensorflow as tf
 import numpy as np
 import os
@@ -7,6 +6,7 @@ import time
 import datetime
 import data_helpers
 from text_cnn import TextCNN
+from text_rnn import TextRNN
 from text_cnn_rnn import TextCNNRNN
 from tensorflow.contrib import learn
 import sys
@@ -17,7 +17,7 @@ import pdb
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_string("model_type", "cnnrnn", "model type cnn or cnnrnn")
+tf.flags.DEFINE_string("model_type", "rnn", "model type cnn or cnnrnn")
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "./data/cnews.train.txt.seg", "train data for Chinese.")
 tf.flags.DEFINE_string("test_data_file", "./data/cnew.test.txt", "test data for Chinese.")
@@ -35,7 +35,7 @@ tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 
 # Training parameters
 tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 10, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_every", 2500, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 5, "Number of checkpoints to store (default: 5)")
 # Misc Parameters
@@ -115,6 +115,14 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                     num_filters=FLAGS.num_filters,
                     l2_reg_lambda=FLAGS.l2_reg_lambda)
+            elif FLAGS.model_type == "rnn":
+                obj = TextRNN(
+                    sequence_length=FLAGS.max_document_length,
+                    num_classes=y_train.shape[1],
+                    vocab_size=len(vocab_processor.vocabulary_),
+                    hidden_unit=FLAGS.hidden_unit, 
+                    embedding_size=FLAGS.embedding_dim,
+                    l2_reg_lambda=FLAGS.l2_reg_lambda)
             else:
                 obj = TextCNN(
                     sequence_length=FLAGS.max_document_length,
@@ -186,7 +194,7 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 """
                 A single training step
                 """
-                if FLAGS.model_type == "cnnrnn":
+                if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnn":
                     feed_dict = {
                         obj.input_x: x_batch,
                         obj.input_y: y_batch,
@@ -215,7 +223,7 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 correct_total_num = 0
                 for batch in dev_batches:
                     x_dev_batch, y_dev_batch, x_real_len_dev_batch = zip(*batch)
-                    if FLAGS.model_type == "cnnrnn":
+                    if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnn":
                         feed_dict = {
                             obj.input_x: x_dev_batch,
                             obj.input_y: y_dev_batch,
@@ -251,7 +259,7 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 train_step(x_batch, y_batch, x_real_len_batch)
                 current_step = tf.train.global_step(sess, global_step)
                 if current_step % FLAGS.evaluate_every == 0:
-                    print("\nEvaluation:")
+                    print("\nEvaluation:", current_step)
                     cur_acc = dev_step(x_dev, y_dev, x_real_len_dev, writer=dev_summary_writer)
                     if cur_acc > best_acc:
                         best_acc = cur_acc
