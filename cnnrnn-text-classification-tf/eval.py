@@ -7,6 +7,10 @@ import time
 import datetime
 import data_helpers
 from text_cnn import TextCNN
+from text_cnn_rnn import TextCNNRNN
+from text_rnn_cnn import TextRNNCNN
+from text_rnncnn import TextRNNandCNN
+from text_rnn import TextRNN
 from tensorflow.contrib import learn
 import csv
 import json
@@ -15,7 +19,7 @@ import pdb
 # ==================================================
 
 # Data Parameters
-tf.flags.DEFINE_string("model_type", "cnnrnn", "model type cnn or cnnrnn")
+tf.flags.DEFINE_string("model_type", "rnnandcnn", "model type cnn or cnnrnn or rnn, rnncnn, rnnandcnn")
 tf.flags.DEFINE_string("test_data_file", "./data/cnews.test.txt.seg", "test data.")
 
 # Eval Parameters
@@ -80,7 +84,9 @@ with graph.as_default():
         # Load the saved meta graph and restore variables
         saver = tf.train.import_meta_graph("{}.meta".format(checkpoint_file))
         saver.restore(sess, checkpoint_file)
-        if FLAGS.model_type == "cnnrnn":
+        #pdb.set_trace()
+        print("Reading model parameters from %s" % checkpoint_file)
+        if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnncnn" or FLAGS.model_type == "rnn" or FLAGS.model_type == "rnnandcnn":
             real_len = graph.get_operation_by_name("real_len").outputs[0]
         # Get the placeholders from the graph by name
         input_x = graph.get_operation_by_name("input_x").outputs[0]
@@ -98,10 +104,11 @@ with graph.as_default():
 
         for batch in batches:
             x_test_batch, x_real_len_test_batch = zip(*batch)
-            if FLAGS.model_type == "cnnrnn":
-                batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, real_len: x_real_len_test_batch})
-            else:
+            if FLAGS.model_type == "cnn":
                 batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0})
+            else:
+                batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, real_len: x_real_len_test_batch})
+
             all_predictions = np.concatenate([all_predictions, batch_predictions])
 
 # Print accuracy if y_test is defined

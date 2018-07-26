@@ -8,6 +8,8 @@ import data_helpers
 from text_cnn import TextCNN
 from text_rnn import TextRNN
 from text_cnn_rnn import TextCNNRNN
+from text_rnn_cnn import TextRNNCNN
+from text_rnncnn import TextRNNandCNN
 from tensorflow.contrib import learn
 import sys
 import json
@@ -17,7 +19,7 @@ import pdb
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_string("model_type", "rnn", "model type cnn or cnnrnn")
+tf.flags.DEFINE_string("model_type", "rnnandcnn", "model type cnn or cnnrnn , rnncnn, rnnandcnn")
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "./data/cnews.train.txt.seg", "train data for Chinese.")
 tf.flags.DEFINE_string("test_data_file", "./data/cnew.test.txt", "test data for Chinese.")
@@ -115,6 +117,26 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                     num_filters=FLAGS.num_filters,
                     l2_reg_lambda=FLAGS.l2_reg_lambda)
+            elif FLAGS.model_type == "rnncnn":
+                obj = TextRNNCNN(
+                    sequence_length=FLAGS.max_document_length,
+                    num_classes=y_train.shape[1],
+                    vocab_size=len(vocab_processor.vocabulary_),
+                    hidden_unit=FLAGS.hidden_unit, 
+                    embedding_size=FLAGS.embedding_dim,
+                    filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                    num_filters=FLAGS.num_filters,
+                    l2_reg_lambda=FLAGS.l2_reg_lambda)
+            elif FLAGS.model_type == "rnnandcnn":
+                obj = TextRNNandCNN(
+                    sequence_length=FLAGS.max_document_length,
+                    num_classes=y_train.shape[1],
+                    vocab_size=len(vocab_processor.vocabulary_),
+                    hidden_unit=FLAGS.hidden_unit, 
+                    embedding_size=FLAGS.embedding_dim,
+                    filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                    num_filters=FLAGS.num_filters,
+                    l2_reg_lambda=FLAGS.l2_reg_lambda)
             elif FLAGS.model_type == "rnn":
                 obj = TextRNN(
                     sequence_length=FLAGS.max_document_length,
@@ -194,18 +216,18 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 """
                 A single training step
                 """
-                if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnn":
+                if FLAGS.model_type == "cnn":
                     feed_dict = {
                         obj.input_x: x_batch,
                         obj.input_y: y_batch,
-                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob,
-                        obj.real_len: x_real_len_batch
+                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob
                     }
                 else:
                     feed_dict = {
                         obj.input_x: x_batch,
                         obj.input_y: y_batch,
-                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob
+                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob,
+                        obj.real_len: x_real_len_batch
                     }
                 _, step, summaries, loss, accuracy = sess.run(
                     [train_op, global_step, train_summary_op, obj.loss, obj.accuracy],
@@ -223,19 +245,20 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 correct_total_num = 0
                 for batch in dev_batches:
                     x_dev_batch, y_dev_batch, x_real_len_dev_batch = zip(*batch)
-                    if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnn":
+                    if FLAGS.model_type == "cnn":
+                        feed_dict = {
+                            obj.input_x: x_dev_batch,
+                            obj.input_y: y_dev_batch,
+                            obj.dropout_keep_prob: 1.0
+                        }
+                    else:
                         feed_dict = {
                             obj.input_x: x_dev_batch,
                             obj.input_y: y_dev_batch,
                             obj.dropout_keep_prob: 1.0,
                             obj.real_len: x_real_len_dev_batch
                         }
-                    else:
-                        feed_dict = {
-                            obj.input_x: x_dev_batch,
-                            obj.input_y: y_dev_batch,
-                            obj.dropout_keep_prob: 1.0
-                        }
+
                     step, summaries, pred, correct_pred_num = sess.run(
                         [global_step, dev_summary_op, obj.predictions, obj.correct_pred_num],
                         feed_dict)
@@ -261,10 +284,10 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 if current_step % FLAGS.evaluate_every == 0:
                     print("\nEvaluation:", current_step)
                     cur_acc = dev_step(x_dev, y_dev, x_real_len_dev, writer=dev_summary_writer)
-                    if cur_acc > best_acc:
+                    path = saver.save(sess, checkpoint_prefix, global_step=current_step)
+                    print("Saved model checkpoint to {}\n".format(path))
+                    if cur_acc >= best_acc:
                         best_acc = cur_acc
-                        path = saver.save(sess, checkpoint_prefix, global_step=current_step)
-                        print("Saved model checkpoint to {}\n".format(path))
                     else:
                         print("current accuracy drop and stop train..\n")
                         sys.exit(0)
