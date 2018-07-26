@@ -15,6 +15,7 @@
 #这个子集可以在此下载：链接: https://pan.baidu.com/s/1hugrfRu 密码: qfud
 
 #experiment result:
+
 #cnn模型: 开发集：915, 验证集：0.899
 
 #rnn模型:开发集：0.918, 验证集：0.895
