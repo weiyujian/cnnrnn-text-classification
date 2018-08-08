@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-
+from util import highway
 
 class TextCNN(object):
     """
@@ -45,23 +45,35 @@ class TextCNN(object):
                 h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                 # Maxpooling over the outputs
                 pool_size = sequence_length - filter_size + 1
-                pooled = self._chunk_max_pooling(h, topk)#sequence_length - filter_size + 1
+                #pooled = self._chunk_max_pooling(h, topk)#sequence_length - filter_size + 1
+                pooled = self._max_pooling(h, pool_size)
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features
-        num_filters_total = num_filters * len(filter_sizes) * topk
+        num_filters_total = num_filters * len(filter_sizes)
         self.h_pool = tf.concat(pooled_outputs, 3)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
+        
+        # Fully Connected Layer
+        with tf.name_scope("fc"):
+            fc_hidden_size = num_filters_total             
+            W_fc = tf.Variable(tf.truncated_normal(shape=[num_filters_total, fc_hidden_size],\
+                stddev=0.1, dtype=tf.float32), name="W_fc")
+            b_fc = tf.Variable(tf.constant(value=0.1, shape=[fc_hidden_size], dtype=tf.float32), name="b_fc")
+            self.fc = tf.nn.xw_plus_b(self.h_pool_flat, W_fc, b_fc)
+            self.fc_out = tf.nn.relu(self.fc, name="relu")
+        # Highway Layer
+        self.highway = highway(self.fc_out, self.fc_out.get_shape()[1], num_layers=1, bias=-0.5, scope="Highway")
 
         # Add dropout
         with tf.name_scope("dropout"):
-            self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
+            self.h_drop = tf.nn.dropout(self.highway, self.dropout_keep_prob)
 
         # Final (unnormalized) scores and predictions
         with tf.name_scope("output"):
             W = tf.get_variable(
                 "W",
-                shape=[num_filters_total, num_classes],
+                shape=[fc_hidden_size, num_classes],
                 initializer=tf.contrib.layers.xavier_initializer())
             b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
             l2_loss += tf.nn.l2_loss(W)
