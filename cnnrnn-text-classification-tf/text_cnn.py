@@ -15,6 +15,7 @@ class TextCNN(object):
         self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
+        self.is_training = tf.placeholder(tf.bool, name="is_training")
 
         # Keeping track of l2 regularization loss (optional)
         l2_loss = tf.constant(0.0)
@@ -34,15 +35,17 @@ class TextCNN(object):
                 # Convolution Layer
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
-                b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
+                #b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
                 conv = tf.nn.conv2d(
                     self.embedded_chars_expanded,
                     W,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
                     name="conv")
+                conv_bn = tf.layers.batch_normalization(conv, training=self.is_training)
                 # Apply nonlinearity
-                h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                #h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                h = tf.nn.relu(conv_bn, name="relu")
                 # Maxpooling over the outputs
                 pool_size = sequence_length - filter_size + 1
                 #pooled = self._chunk_max_pooling(h, topk)#sequence_length - filter_size + 1
@@ -59,9 +62,11 @@ class TextCNN(object):
             fc_hidden_size = num_filters_total             
             W_fc = tf.Variable(tf.truncated_normal(shape=[num_filters_total, fc_hidden_size],\
                 stddev=0.1, dtype=tf.float32), name="W_fc")
-            b_fc = tf.Variable(tf.constant(value=0.1, shape=[fc_hidden_size], dtype=tf.float32), name="b_fc")
-            self.fc = tf.nn.xw_plus_b(self.h_pool_flat, W_fc, b_fc)
-            self.fc_out = tf.nn.relu(self.fc, name="relu")
+            #b_fc = tf.Variable(tf.constant(value=0.1, shape=[fc_hidden_size], dtype=tf.float32), name="b_fc")
+            #self.fc = tf.nn.xw_plus_b(self.h_pool_flat, W_fc, b_fc)
+            self.fc = tf.matmul(self.h_pool_flat, W_fc)
+            self.fc_bn = tf.layers.batch_normalization(self.fc, training=self.is_training)
+            self.fc_out = tf.nn.relu(self.fc_bn, name="relu")
         # Highway Layer
         self.highway = highway(self.fc_out, self.fc_out.get_shape()[1], num_layers=1, bias=-0.5, scope="Highway")
 

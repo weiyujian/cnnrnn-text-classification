@@ -19,7 +19,7 @@ import pdb
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_string("model_type", "rnnandcnn", "model type cnn or cnnrnn , rnncnn, rnnandcnn")
+tf.flags.DEFINE_string("model_type", "cnn", "model type cnn or cnnrnn , rnncnn, rnnandcnn")
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "./data/cnews.train.txt.seg", "train data for Chinese.")
 tf.flags.DEFINE_string("test_data_file", "./data/cnew.test.txt", "test data for Chinese.")
@@ -158,8 +158,10 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
             optimizer = tf.train.AdamOptimizer(1e-3)
-            grads_and_vars = optimizer.compute_gradients(obj.loss)
-            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                grads_and_vars = optimizer.compute_gradients(obj.loss)
+                train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             # Keep track of gradient values and sparsity (optional)
             grad_summaries = []
@@ -220,7 +222,8 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     feed_dict = {
                         obj.input_x: x_batch,
                         obj.input_y: y_batch,
-                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob
+                        obj.dropout_keep_prob: FLAGS.dropout_keep_prob,
+                        obj.is_training: True
                     }
                 else:
                     feed_dict = {
@@ -235,6 +238,15 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 time_str = datetime.datetime.now().isoformat()
                 print("{}: step {}, loss {:g}, acc {:g}".format(time_str, step, loss, accuracy))
                 train_summary_writer.add_summary(summaries, step)
+            
+            def overfit(dev_loss,eva_num=3):
+                n = len(dev_loss)
+                if n < eva_num:
+                    return False
+                for i in xrange(n-eva_num+1, n):
+                    if dev_loss[i] > dev_loss[i-1]:
+                        return False
+                return True
 
             def dev_step(x_batch, y_batch, x_real_len_batch, writer=None):
                 """
@@ -249,7 +261,8 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                         feed_dict = {
                             obj.input_x: x_dev_batch,
                             obj.input_y: y_dev_batch,
-                            obj.dropout_keep_prob: 1.0
+                            obj.dropout_keep_prob: 1.0,
+                            obj.is_training: False
                         }
                     else:
                         feed_dict = {
@@ -267,16 +280,14 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     if writer:
                         writer.add_summary(summaries, step)
                 dev_acc = 1.0 * correct_total_num / len(y_batch)
-                print ("correct_num",correct_total_num)
-                print ("total_num",len(y_batch))
-                print ("dev_acc",dev_acc)
+                print("right_sample {}, dev_sample {}, dev_acc {:g}".format(correct_total_num, len(y_batch), dev_acc))
                 return dev_acc
 
             # Generate batches
             batches = data_helpers.batch_iter(
                 list(zip(x_train, y_train, x_real_len_train)), FLAGS.batch_size, FLAGS.num_epochs)
             # Training loop. For each batch...
-            best_acc = 0.0
+            dev_acc = []
             for batch in batches:
                 x_batch, y_batch, x_real_len_batch = zip(*batch)
                 train_step(x_batch, y_batch, x_real_len_batch)
@@ -286,9 +297,8 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     cur_acc = dev_step(x_dev, y_dev, x_real_len_dev, writer=dev_summary_writer)
                     path = saver.save(sess, checkpoint_prefix, global_step=current_step)
                     print("Saved model checkpoint to {}\n".format(path))
-                    if cur_acc >= best_acc:
-                        best_acc = cur_acc
-                    else:
+                    dev_acc.append(cur_acc)
+                    if overfit(dev_acc):
                         print("current accuracy drop and stop train..\n")
                         sys.exit(0)
                     print("")

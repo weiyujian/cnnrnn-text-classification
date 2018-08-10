@@ -19,7 +19,7 @@ import pdb
 # ==================================================
 
 # Data Parameters
-tf.flags.DEFINE_string("model_type", "rnnandcnn", "model type cnn or cnnrnn or rnn, rnncnn, rnnandcnn")
+tf.flags.DEFINE_string("model_type", "cnn", "model type cnn or cnnrnn or rnn, rnncnn, rnnandcnn")
 tf.flags.DEFINE_string("test_data_file", "./data/cnews.test.txt.seg", "test data.")
 
 # Eval Parameters
@@ -88,6 +88,8 @@ with graph.as_default():
         print("Reading model parameters from %s" % checkpoint_file)
         if FLAGS.model_type == "cnnrnn" or FLAGS.model_type == "rnncnn" or FLAGS.model_type == "rnn" or FLAGS.model_type == "rnnandcnn":
             real_len = graph.get_operation_by_name("real_len").outputs[0]
+        else:
+            is_training = graph.get_operation_by_name("is_training").outputs[0]
         # Get the placeholders from the graph by name
         input_x = graph.get_operation_by_name("input_x").outputs[0]
         # input_y = graph.get_operation_by_name("input_y").outputs[0]
@@ -105,7 +107,7 @@ with graph.as_default():
         for batch in batches:
             x_test_batch, x_real_len_test_batch = zip(*batch)
             if FLAGS.model_type == "cnn":
-                batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0})
+                batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, is_training: False})
             else:
                 batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, real_len: x_real_len_test_batch})
 
