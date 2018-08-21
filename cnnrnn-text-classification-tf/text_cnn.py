@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from util import highway
-
+import pdb
 class TextCNN(object):
     """
     A CNN for text classification.
@@ -16,7 +16,7 @@ class TextCNN(object):
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
         self.is_training = tf.placeholder(tf.bool, name="is_training")
-
+        self.use_region_emb = True
         # Keeping track of l2 regularization loss (optional)
         l2_loss = tf.constant(0.0)
 
@@ -25,7 +25,14 @@ class TextCNN(object):
             self.W = tf.Variable(
                 tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
                 name="W")
-            self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
+            if self.use_region_emb:
+                self.region_size = 5
+                self.region_radius = self.region_size / 2
+                self.k_matrix_embedding = tf.Variable(tf.random_uniform([vocab_size, self.region_size, embedding_size], -1.0, 1.0), name="k_matrix")
+                self.embedded_chars = self.region_embedding(self.input_x)
+                sequence_length = int(self.embedded_chars.shape[1])
+            else:
+                self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
             self.embedded_chars_expanded = tf.expand_dims(self.embedded_chars, -1)
 
         # Create a convolution + maxpool layer for each filter size
@@ -126,4 +133,27 @@ class TextCNN(object):
             chunk_pooled_list.append(chunk_pool_)
         chunk_pooled = tf.concat(chunk_pooled_list, axis=1)
         return chunk_pooled
+    
+    def get_seq(self, inputs):
+        neighbor_seq = map(lambda i: tf.slice(inputs, [0, i-self.region_radius], [-1, self.region_size]), xrange(self.region_radius, inputs.shape[1] - self.region_radius))
+        neighbor_seq = tf.convert_to_tensor(neighbor_seq)
+        neighbor_seq = tf.transpose(neighbor_seq, [1,0,2])
+        return neighbor_seq
+    
+    def get_seq_without_loss(self, inputs):
+        neighbor_seq = map(lambda i: tf.slice(inputs, [0, i-self.region_radius], [-1, self.region_size]), xrange(self.region_radius, inputs.shape[1] - self.region_radius))
+        neighbor_begin = map(lambda i: tf.slice(inputs, [0, 0], [-1, self.region_size]), xrange(0, self.region_radius))
+        neighbor_end = map(lambda i: tf.slice(inputs, [0, inputs.shape[1] - self.region_size], [-1, self.region_size]), xrange(0, self.region_radius))
+        neighbor_seq = tf.concat([neighbor_begin, neighbor_seq, neighbor_end], 0)
+        neighbor_seq = tf.convert_to_tensor(neighbor_seq)
+        neighbor_seq = tf.transpose(neighbor_seq, [1,0,2])
+        return neighbor_seq
 
+    def region_embedding(self, inputs):
+        region_k_seq = self.get_seq(inputs)
+        region_k_emb = tf.nn.embedding_lookup(self.W, region_k_seq)
+        trimed_inputs = inputs[:, self.region_radius: inputs.get_shape()[1] - self.region_radius]
+        context_unit = tf.nn.embedding_lookup(self.k_matrix_embedding, trimed_inputs)
+        projected_emb = region_k_emb * context_unit
+        embedded_chars = tf.reduce_max(projected_emb, axis=2)
+        return embedded_chars
