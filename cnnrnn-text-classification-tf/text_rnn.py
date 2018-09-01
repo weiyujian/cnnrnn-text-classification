@@ -6,6 +6,8 @@ class TextRNN(object):
     """
     A RNN for text classification.
     Uses an embedding layer, followed by a rnn and softmax layer.
+    support gru lstm, and multi_rnn_cell
+    support two ways attention
     """
     def __init__(
       self, sequence_length, num_classes, vocab_size, hidden_unit,
@@ -16,7 +18,8 @@ class TextRNN(object):
         self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
         self.real_len = tf.placeholder(tf.int32, [None], name="real_len")
-        self.num_layers = 2 #whether use multi-rnn
+        self.num_layers = 3 #whether use multi-rnn
+        self.rnn_type = "lstm" # use lstm or gru
         # Keeping track of l2 regularization loss (optional)
         l2_loss = tf.constant(0.0)
 
@@ -26,26 +29,34 @@ class TextRNN(object):
                 tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
                 name="W")
             self.embedded_chars = tf.nn.embedding_lookup(self.W, self.input_x)
-
-        # Create bi-gru layer and get the last output of real len
-        with tf.name_scope("bi-gru") as scope:
-            fw_cell_0 = self.get_a_cell(hidden_unit)
-            bw_cell_0 = self.get_a_cell(hidden_unit)
-            if self.num_layers > 1:
-                fw_cell_1 = self.get_a_cell(hidden_unit)
-                bw_cell_1 = self.get_a_cell(hidden_unit)
-                fw_cell_0 = rnn_cell.MultiRNNCell([fw_cell_0] + [fw_cell_1] * (self.num_layers - 1))
-                bw_cell_0 = rnn_cell.MultiRNNCell([bw_cell_0] + [bw_cell_1] * (self.num_layers - 1))
-            
-            fw_cell = fw_cell_0
-            bw_cell = bw_cell_0
-            rnn_outputs, rnn_states = rnn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.embedded_chars, sequence_length=tf.cast(self.real_len, tf.int64), dtype=tf.float32)
-            #self.h_pool_flat = tf.concat(rnn_states, 1)
-            rnn_outputs = tf.concat(rnn_outputs, 2)
-            #self.h_pool_flat = self.get_last_output(rnn_outputs)
-            self.attn_obj = MLPAttentionLayer(2 * hidden_unit)
-            #self.attn_obj = DotProductAttentionLayer(2 * hidden_unit)
-            self.h_pool_flat = self.attn_obj.get_output_for(rnn_outputs)
+        
+        if self.rnn_type == "gru":
+            # Create bi-gru layer and get the last output of real len
+            with tf.name_scope("gru") as scope:
+                fw_cell_0 = self.get_a_cell(hidden_unit)
+                bw_cell_0 = self.get_a_cell(hidden_unit)
+                if self.num_layers > 1:
+                    fw_cell_1 = self.get_a_cell(hidden_unit)
+                    bw_cell_1 = self.get_a_cell(hidden_unit)
+                    fw_cell_0 = rnn_cell.MultiRNNCell([fw_cell_0] + [fw_cell_1] * (self.num_layers - 1))
+                    bw_cell_0 = rnn_cell.MultiRNNCell([bw_cell_0] + [bw_cell_1] * (self.num_layers - 1))
+                fw_cell = fw_cell_0
+                bw_cell = bw_cell_0
+                rnn_outputs, rnn_states = rnn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.embedded_chars, sequence_length=tf.cast(self.real_len, tf.int64), dtype=tf.float32)
+        elif self.rnn_type == "lstm":
+            #create lstm layer using dynamic rnn
+            with tf.name_scope("lstm") as scope:
+                fw_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(hidden_unit, forget_bias=0.0) for _ in xrange(self.num_layers)])
+                bw_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(hidden_unit, forget_bias=0.0) for _ in xrange(self.num_layers)])
+                rnn_outputs, nex_state = rnn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.embedded_chars,sequence_length=tf.cast(self.real_len, tf.int64), dtype=tf.float32)
+        pdb.set_trace()
+        #self.h_pool_flat = tf.concat(rnn_states, 1)
+        rnn_outputs = tf.concat(rnn_outputs, 2)
+        #self.h_pool_flat = self.get_last_output(rnn_outputs)
+        self.attn_obj = MLPAttentionLayer(2 * hidden_unit)
+        #self.attn_obj = DotProductAttentionLayer(2 * hidden_unit)
+        self.h_pool_flat = self.attn_obj.get_output_for(rnn_outputs)
+        
         # Add dropout
         with tf.name_scope("dropout"):
             self.h_drop = tf.nn.dropout(self.h_pool_flat, self.dropout_keep_prob)
