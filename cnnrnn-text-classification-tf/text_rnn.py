@@ -49,7 +49,7 @@ class TextRNN(object):
                 fw_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(hidden_unit, forget_bias=0.0) for _ in xrange(self.num_layers)])
                 bw_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(hidden_unit, forget_bias=0.0) for _ in xrange(self.num_layers)])
                 rnn_outputs, nex_state = rnn.bidirectional_dynamic_rnn(fw_cell, bw_cell, self.embedded_chars,sequence_length=tf.cast(self.real_len, tf.int64), dtype=tf.float32)
-        pdb.set_trace()
+        
         #self.h_pool_flat = tf.concat(rnn_states, 1)
         rnn_outputs = tf.concat(rnn_outputs, 2)
         #self.h_pool_flat = self.get_last_output(rnn_outputs)
