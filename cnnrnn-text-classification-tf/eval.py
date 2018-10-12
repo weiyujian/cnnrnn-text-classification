@@ -6,6 +6,7 @@ import os
 import time
 import datetime
 import data_helpers
+from text_dpcnn import TextDPCNN
 from text_attn_cnn import TextAttnCNN
 from text_dan import TextDAN
 from text_cnn import TextCNN
@@ -21,7 +22,7 @@ import pdb
 # ==================================================
 
 # Data Parameters
-tf.flags.DEFINE_string("model_type", "attn_cnn", "model type cnn or cnnrnn or rnn, rnncnn, rnnandcnn")
+tf.flags.DEFINE_string("model_type", "dpcnn", "model type cnn or cnnrnn or rnn, rnncnn, rnnandcnn")
 tf.flags.DEFINE_string("test_data_file", "./data/cnews.test.txt.seg", "test data.")
 
 # Eval Parameters
@@ -108,7 +109,7 @@ with graph.as_default():
 
         for batch in batches:
             x_test_batch, x_real_len_test_batch = zip(*batch)
-            if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn":
+            if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn" or FLAGS.model_type == "dpcnn":
                 batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, is_training: False})
             else:
                 batch_predictions = sess.run(predictions, {input_x: x_test_batch, dropout_keep_prob: 1.0, real_len: x_real_len_test_batch})

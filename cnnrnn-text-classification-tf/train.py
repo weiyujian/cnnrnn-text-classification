@@ -5,6 +5,7 @@ import os
 import time
 import datetime
 import data_helpers
+from text_dpcnn import TextDPCNN
 from text_attn_cnn import TextAttnCNN
 from text_dan import TextDAN
 from text_cnn import TextCNN
@@ -21,26 +22,27 @@ import pdb
 # ==================================================
 
 # Data loading params
-tf.flags.DEFINE_string("model_type", "attn_cnn", "model type cnn or cnnrnn , rnncnn, rnnandcnn")
+tf.flags.DEFINE_string("model_type", "dpcnn", "model type cnn or cnnrnn , rnncnn, rnnandcnn")
 tf.flags.DEFINE_float("dev_sample_percentage", .1, "Percentage of the training data to use for validation")
 tf.flags.DEFINE_string("train_data_file", "./data/cnews.train.txt.seg", "train data for Chinese.")
 tf.flags.DEFINE_string("test_data_file", "./data/cnew.test.txt", "test data for Chinese.")
-tf.flags.DEFINE_integer("max_document_length", 300, "Max document length(default: 600)")
+tf.flags.DEFINE_integer("max_document_length", 40, "Max document length(default: 600)")
 tf.flags.DEFINE_string("model_version", "", "model version")
 # Model Hyperparameters
 
-tf.flags.DEFINE_integer("embedding_dim", 200, "Dimensionality of character embedding (default: 128)")
+tf.flags.DEFINE_integer("embedding_dim", 100, "Dimensionality of character embedding (default: 128)")
 tf.flags.DEFINE_string("filter_sizes", "3,4,5", "Comma-separated filter sizes (default: '3,4,5')")
-tf.flags.DEFINE_integer("num_filters", 300, "Number of filters per filter size (default: 128)")
+tf.flags.DEFINE_integer("num_filters", 200, "Number of filters per filter size (default: 128)")
 tf.flags.DEFINE_integer("num_heads", 4, "Number of heads for multi-head attention (default: 8)")
+tf.flags.DEFINE_integer("num_blocks", 3, "Number of blocks for dpcnn (default: 8)")
 tf.flags.DEFINE_integer("hidden_unit", 256, "Rnn hidden size (default: 128)")
 tf.flags.DEFINE_float("dropout_keep_prob", 0.5, "Dropout keep probability (default: 0.5)")
 tf.flags.DEFINE_float("l2_reg_lambda", 0.0, "L2 regularization lambda (default: 0.0)")
 
 # Training parameters
-tf.flags.DEFINE_integer("batch_size", 64, "Batch Size (default: 64)")
+tf.flags.DEFINE_integer("batch_size", 32, "Batch Size (default: 64)")
 tf.flags.DEFINE_integer("num_epochs", 200, "Number of training epochs (default: 200)")
-tf.flags.DEFINE_integer("evaluate_every", 2500, "Evaluate model on dev set after this many steps (default: 100)")
+tf.flags.DEFINE_integer("evaluate_every", 25, "Evaluate model on dev set after this many steps (default: 100)")
 tf.flags.DEFINE_integer("checkpoint_every", 1000, "Save model after this many steps (default: 100)")
 tf.flags.DEFINE_integer("num_checkpoints", 3, "Number of checkpoints to store (default: 5)")
 # Misc Parameters
@@ -167,6 +169,16 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                     filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
                     num_filters=FLAGS.num_filters,
                     l2_reg_lambda=FLAGS.l2_reg_lambda)
+            elif FLAGS.model_type == "dpcnn":
+                obj = TextDPCNN(
+                    sequence_length=FLAGS.max_document_length,
+                    num_classes=y_train.shape[1],
+                    vocab_size=len(vocab_processor.vocabulary_),
+                    embedding_size=FLAGS.embedding_dim,
+                    filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
+                    num_filters=FLAGS.num_filters,
+                    num_blocks=FLAGS.num_blocks,
+                    l2_reg_lambda=FLAGS.l2_reg_lambda)
             else:
                 obj = TextCNN(
                     sequence_length=FLAGS.max_document_length,
@@ -240,7 +252,7 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 """
                 A single training step
                 """
-                if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn":
+                if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn" or FLAGS.model_type == "dpcnn":
                     feed_dict = {
                         obj.input_x: x_batch,
                         obj.input_y: y_batch,
@@ -279,7 +291,7 @@ def train(x_train, y_train, vocab_processor, x_dev, y_dev, x_real_len_train, x_r
                 correct_total_num = 0
                 for batch in dev_batches:
                     x_dev_batch, y_dev_batch, x_real_len_dev_batch = zip(*batch)
-                    if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn":
+                    if FLAGS.model_type == "cnn" or FLAGS.model_type == "dan" or FLAGS.model_type == "attn_cnn" or FLAGS.model_type == "dpcnn":
                         feed_dict = {
                             obj.input_x: x_dev_batch,
                             obj.input_y: y_dev_batch,
